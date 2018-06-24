@@ -1,0 +1,113 @@
+Sample DataSources
+
+https://catalog.data.gov/dataset
+
+Online Modeling Tool
+
+http://www.apcjones.com/arrows/ for modelling
+
+How To?
+
+- Create basic model with the type of expected questions
+- Load and see if we can load the CSV and 
+  it has everything we are looking for
+
+Quick Cypher Query
+
+LOAD CSV WITH HEADERS FROM
+'file:///c:/Users/bikrant.kumar.sharma/Consumer_Complaints.csv' AS line
+WITH line
+LIMIT 1
+return line
+
+- You can use Sublime or any editor of your choice to modify Cypher queries
+
+
+GOLDEN RULE
+
+- Always make sure you have index on properties you will be merging on using periodic commit. (unless index exist on property or label)
+- To see all indexes use :schema
+
+Example of Inserting DATA using Consumer_Complaints.csv (Clean the CSV First)
+
+THIS FOLLOW THE ATTACHED MODEL
+http://www.apcjones.com/arrows/#
+
+
+
+CREATE CONSTRAINT ON (c:Complaint) ASSERT c.id IS UNIQUE;
+CREATE CONSTRAINT ON (c:Company) ASSERT c.name IS UNIQUE;
+CREATE CONSTRAINT ON (r:Response) ASSERT r.name IS UNIQUE;
+
+Using Periodic Commit
+LOAD CSV WITH HEADERS FROM
+'file:///c:/Users/bikrant.kumar.sharma/Consumer_Complaints.csv' AS line
+WITH line, SPLIT(line.`Date received`, '/') AS date
+WHERE (line.`Company` IS NOT NULL) AND (line.`Company response` IS NOT NULL) AND  (line.`Complaint ID`IS NOT NULL)
+
+CREATE(complaint:Complaint {id: TOINTEGER(line.`Complaint ID`),submittedDate:Date({day:TOINTEGER(date[1]),month:TOINTEGER(date[0]),year:TOINTEGER(date[2])})})
+MERGE(company: Company {name:TOUPPER(line.Company)})    
+MERGE(response: Response{name: TOUPPER(line.`Company response`)})     
+
+CREATE(complaint)-[:AGAINST] -> (company)
+CREATE(response)-[r:TO]->(complaint) 
+SET r.timely = CASE line.`Timely response?` when 'Yes' THEN true ELSE false END, 
+    r.disputed = CASE line.`Consumer disputed?` when 'Yes' THEN true ELSE false END
+;
+
+
+--Adding Product and Issues to existing node (s)
+
+CREATE CONSTRAINT ON (p:Product) ASSERT p.name IS UNIQUE;
+CREATE CONSTRAINT ON (p:Issue) ASSERT p.name IS UNIQUE;
+
+Using Periodic Commit
+LOAD CSV WITH HEADERS FROM
+'file:///c:/Users/bikrant.kumar.sharma/Consumer_Complaints.csv' AS line
+WHERE (line.`Company` IS NOT NULL) AND (line.`Company response` IS NOT NULL) AND  (line.`Complaint ID`IS NOT NULL)
+
+MATCH(complaint:Complaint {id: TOINTEGER(line.`Complaint ID`)})
+
+MERGE(product:Product {name: TOUPPER(line.Product)})
+MERGE(issue:Issue {name: TOUPPER(line.Issue)})
+
+CREATE(complaint)-[:ABOUT]->(product)
+CREATE(complaint)-[:WITH]->(issue)
+
+
+CREATE CONSTRAINT ON (p:SubIssue) ASSERT p.name IS UNIQUE;
+
+Using Periodic Commit
+LOAD CSV WITH HEADERS FROM
+'file:///c:/Users/bikrant.kumar.sharma/Consumer_Complaints.csv' AS line
+WITH line
+WHERE (line.`Sub-issue` IS NOT NULL)
+
+Match(complaint:Complaint {id: TOINTEGER(line.`Complaint ID`)})
+MATCH(complaint)-[:WITH]->(issue:Issue)
+
+MERGE(subIssue:SubIssue {name: TOUPPER(line.`Sub-issue`)})
+
+CREATE(complaint)-[:WITH]->(subIssue)
+MERGE(subIssue)-[:IN_CATEGORY]->(issue) 
+# we will have same subissue with issue multiple time that is why merge
+
+
+
+CREATE CONSTRAINT ON (p:SubProduct) ASSERT p.name IS UNIQUE;
+
+Using Periodic Commit
+LOAD CSV WITH HEADERS FROM
+'file:///c:/Users/bikrant.kumar.sharma/Consumer_Complaints.csv' AS line
+WITH line
+WHERE (line.`Sub-product` IS NOT NULL)
+
+Match(complaint:Complaint {id: TOINTEGER(line.`Complaint ID`)})
+MATCH(complaint)-[:ABOUT]->(product:Prodcut)
+
+MERGE(subProduct:SubProduct {name: TOUPPER(line.`Sub-product`)})
+
+CREATE(complaint)-[:ABOUT]->(subProduct)
+MERGE(subProduct)-[:IN_CATEGORY]->(product)
+
+
